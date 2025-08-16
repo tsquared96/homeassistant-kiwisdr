@@ -12,8 +12,9 @@ from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
     UpdateFailed,
 )
+from homeassistant.helpers.entity import DeviceInfo
 
-from .const import DOMAIN, SENSOR_TYPES, DEFAULT_SCAN_INTERVAL, CONF_HOST
+from .const import DOMAIN, SENSOR_TYPES, DEFAULT_SCAN_INTERVAL, CONF_HOST, CONF_PORT, CONF_NAME
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -65,7 +66,7 @@ class KiwiSDRCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("Fetching KiwiSDR data")
             status = await self.api.get_status()
             
-            # Ensure we have default values for all sensor types
+            # Ensure we have values for all sensor types
             data = {
                 "status": "Online" if status.get("online", False) else "Offline",
                 "users": status.get("users", 0),
@@ -77,6 +78,7 @@ class KiwiSDRCoordinator(DataUpdateCoordinator):
                 "gps_status": status.get("gps_status", "Unknown"),
                 "antenna": status.get("antenna", "Unknown"),
                 "adc_overload": status.get("adc_overload", False),
+                "users_max": status.get("users_max", 4),
             }
             
             _LOGGER.debug("Updated data: %s", data)
@@ -84,7 +86,20 @@ class KiwiSDRCoordinator(DataUpdateCoordinator):
             
         except Exception as err:
             _LOGGER.error("Error fetching KiwiSDR data: %s", err)
-            raise UpdateFailed(f"Error communicating with KiwiSDR: {err}")
+            # Return offline status on error
+            return {
+                "status": "Offline",
+                "users": 0,
+                "frequency": 0,
+                "mode": "Unknown",
+                "bandwidth": 0,
+                "signal_strength": 0,
+                "uptime": 0,
+                "gps_status": "Unknown",
+                "antenna": "Unknown",
+                "adc_overload": False,
+                "users_max": 0,
+            }
 
 class KiwiSDRSensor(CoordinatorEntity, SensorEntity):
     """Representation of a KiwiSDR sensor."""
@@ -102,42 +117,62 @@ class KiwiSDRSensor(CoordinatorEntity, SensorEntity):
         self._sensor_type = sensor_type
         self._sensor_config = sensor_config
         
-        # Create unique entity ID and name
-        name_prefix = entry.data.get('name', 'KiwiSDR')
-        self._attr_unique_id = f"kiwisdr_{entry.entry_id}_{sensor_type}"
+        # Create unique entity ID
+        self._attr_unique_id = f"{entry.entry_id}_{sensor_type}"
+        
+        # Set name
+        name_prefix = entry.data.get(CONF_NAME, 'KiwiSDR')
         self._attr_name = f"{name_prefix} {sensor_config['name']}"
         
-        # Set entity ID explicitly (this is what you'll see in HA)
-        self.entity_id = f"sensor.kiwisdr_{sensor_type}"
-        
+        # Set other attributes
         self._attr_icon = sensor_config.get("icon")
         self._attr_unit_of_measurement = sensor_config.get("unit")
         
-        _LOGGER.debug("Created sensor: %s with entity_id: %s", 
-                     self._attr_name, self.entity_id)
+        # Set device info
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name=name_prefix,
+            manufacturer="KiwiSDR",
+            model="Software Defined Radio",
+            configuration_url=f"http://{entry.data.get(CONF_HOST)}:{entry.data.get(CONF_PORT, 8073)}"
+        )
+        
+        _LOGGER.debug("Created sensor: %s", self._attr_name)
     
     @property
     def state(self):
         """Return the state of the sensor."""
         value = self.coordinator.data.get(self._sensor_type)
+        
+        # Format specific sensor types
+        if self._sensor_type == "uptime" and value:
+            # Convert uptime to hours if it's in seconds
+            if value > 3600:
+                value = round(value / 3600, 1)
+            
         _LOGGER.debug("Sensor %s state: %s", self._sensor_type, value)
         return value
     
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        return self.coordinator.last_update_success
+        return self.coordinator.last_update_success and self.coordinator.data.get("status") == "Online"
     
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
         """Return extra state attributes."""
         attrs = {
             "host": self._entry.data.get(CONF_HOST),
-            "port": self._entry.data.get("port", 8073),
+            "port": self._entry.data.get(CONF_PORT, 8073),
         }
         
-        # Add user list if this is the users sensor
-        if self._sensor_type == "users" and "users_list" in self.coordinator.data:
-            attrs["users_list"] = self.coordinator.data["users_list"]
+        # Add max users for users sensor
+        if self._sensor_type == "users":
+            attrs["max_users"] = self.coordinator.data.get("users_max", 4)
+            attrs["slots_available"] = self.coordinator.data.get("users_max", 4) - self.coordinator.data.get("users", 0)
+        
+        # Add connection URL
+        if self._sensor_type == "status":
+            attrs["url"] = f"http://{self._entry.data.get(CONF_HOST)}:{self._entry.data.get(CONF_PORT, 8073)}"
         
         return attrs
