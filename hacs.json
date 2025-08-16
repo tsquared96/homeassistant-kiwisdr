@@ -1,1 +1,7 @@
-
+{
+  "name": "KiwiSDR",
+  "render_readme": true,
+  "domains": ["sensor", "media_player", "camera"],
+  "country": ["US"],
+  "homeassistant": "2024.1.0"
+}
