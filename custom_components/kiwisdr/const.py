@@ -17,11 +17,11 @@ DEFAULT_SCAN_INTERVAL = 30
 
 # WebSocket commands
 WS_CMD_SET_FREQ = "SET freq={:.3f}"
-WS_CMD_SET_MODE = "SET mode={}"
+WS_CMD_SET_MODE = "SET mod={}"
 WS_CMD_SET_ZOOM = "SET zoom={}"
 WS_CMD_SET_WF_SPEED = "SET wf_speed={}"
 WS_CMD_GET_STATUS = "GET status"
-WS_CMD_ADMIN_AUTH = "SET auth t=kiwi p={}"
+WS_CMD_ADMIN_AUTH = "SET auth t=admin p={}"
 
 # Audio parameters
 AUDIO_SAMPLE_RATE = 12000
@@ -47,4 +47,4 @@ SENSOR_TYPES = {
 }
 
 # Modes
-MODES = ["AM", "AMN", "USB", "LSB", "CW", "CWN", "FM", "DRM", "IQ"]
+MODES = ["AM", "AMN", "USB", "LSB", "CW", "CWN", "FM", "IQ"]
