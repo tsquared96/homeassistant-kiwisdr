@@ -1,0 +1,196 @@
+tune:
+  name: Tune Radio
+  description: Tune KiwiSDR to a specific frequency and mode
+  target:
+    entity:
+      integration: kiwisdr
+      domain: media_player
+  fields:
+    frequency:
+      name: Frequency
+      description: Frequency in kHz
+      required: true
+      example: 7074.0
+      selector:
+        number:
+          min: 0
+          max: 30000
+          step: 0.001
+          unit_of_measurement: kHz
+    mode:
+      name: Mode
+      description: Demodulation mode
+      required: false
+      default: "AM"
+      selector:
+        select:
+          options:
+            - "AM"
+            - "AMN"
+            - "LSB"
+            - "USB"
+            - "CW"
+            - "CWN"
+            - "FM"
+            - "IQ"
+
+set_mode:
+  name: Set Mode
+  description: Change demodulation mode
+  target:
+    entity:
+      integration: kiwisdr
+      domain: media_player
+  fields:
+    mode:
+      name: Mode
+      description: Demodulation mode
+      required: true
+      selector:
+        select:
+          options:
+            - "AM"
+            - "AMN"
+            - "LSB"
+            - "USB"
+            - "CW"
+            - "CWN"
+            - "FM"
+            - "IQ"
+
+set_bandwidth:
+  name: Set Bandwidth
+  description: Set receiver bandwidth
+  target:
+    entity:
+      integration: kiwisdr
+      domain: media_player
+  fields:
+    low_cut:
+      name: Low Cut
+      description: Low frequency cutoff in Hz
+      required: true
+      default: -2400
+      selector:
+        number:
+          min: -5000
+          max: 0
+          step: 50
+          unit_of_measurement: Hz
+    high_cut:
+      name: High Cut
+      description: High frequency cutoff in Hz
+      required: true
+      default: 2400
+      selector:
+        number:
+          min: 0
+          max: 5000
+          step: 50
+          unit_of_measurement: Hz
+
+set_agc:
+  name: Set AGC
+  description: Configure Automatic Gain Control
+  fields:
+    enabled:
+      name: Enabled
+      description: Enable AGC
+      required: true
+      selector:
+        boolean:
+    hang:
+      name: Hang
+      description: Enable AGC hang
+      required: false
+      default: false
+      selector:
+        boolean:
+    threshold:
+      name: Threshold
+      description: AGC threshold (-130 to -30 dBm)
+      required: false
+      default: -100
+      selector:
+        number:
+          min: -130
+          max: -30
+          step: 1
+          unit_of_measurement: dBm
+
+set_squelch:
+  name: Set Squelch
+  description: Set squelch level
+  fields:
+    level:
+      name: Level
+      description: Squelch level (0-99, 0=off)
+      required: true
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 99
+          step: 1
+
+waterfall_settings:
+  name: Waterfall Settings
+  description: Configure waterfall display
+  fields:
+    zoom:
+      name: Zoom Level
+      description: Waterfall zoom (0-14)
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 14
+          step: 1
+    speed:
+      name: Update Speed
+      description: Waterfall update speed
+      required: false
+      selector:
+        select:
+          options:
+            - "slow"
+            - "normal"
+            - "fast"
+    colormap:
+      name: Color Map
+      description: Waterfall color scheme
+      required: false
+      selector:
+        select:
+          options:
+            - "default"
+            - "grayscale"
+            - "rainbow"
+            - "heat"
+
+tune_preset:
+  name: Tune to Preset
+  description: Tune to a predefined station
+  fields:
+    preset:
+      name: Preset Station
+      description: Select a preset station
+      required: true
+      selector:
+        select:
+          options:
+            - "WWV 2.5 MHz"
+            - "WWV 5 MHz"
+            - "WWV 10 MHz"
+            - "WWV 15 MHz"
+            - "CHU 3.33 MHz"
+            - "CHU 7.85 MHz"
+            - "BBC 5.875 MHz"
+            - "FT8 3.573 MHz"
+            - "FT8 7.074 MHz"
+            - "FT8 14.074 MHz"
+            - "WSPR 7.0386 MHz"
+            - "WSPR 14.0956 MHz"
+            - "CB Channel 19"
+            - "Air Band"
+            - "Marine VHF"
