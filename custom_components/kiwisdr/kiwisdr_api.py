@@ -28,12 +28,12 @@ class KiwiSDRWebSocket:
             'users': []
         }
         self.is_admin = False
-        self.rx_chan = 0  # Receiver channel
+        self.rx_chan = 0
         
     async def connect(self):
         """Connect to KiwiSDR WebSocket."""
         try:
-            # KiwiSDR WebSocket URL format
+            # KiwiSDR WebSocket URL
             ws_url = f"ws://{self.host}:{self.port}/{self.port}/SND"
             
             _LOGGER.info("Connecting to KiwiSDR WebSocket at %s", ws_url)
@@ -41,7 +41,10 @@ class KiwiSDRWebSocket:
             self.ws = await websockets.connect(
                 ws_url,
                 compression=None,
-                max_size=None
+                max_size=None,
+                close_timeout=10,
+                ping_interval=20,
+                ping_timeout=10
             )
             
             self.running = True
@@ -60,46 +63,40 @@ class KiwiSDRWebSocket:
             return False
     
     async def _handshake(self):
-        """Perform KiwiSDR handshake."""
-        # Initial connection string for KiwiSDR
-        handshake = {
-            "type": "SND",
-            "gen": 0,
-            "wf": 0,
-            "ag": 1,
-            "nb": 0,
-            "nr": 0,
-            "an": 0,
-            "sq": 0,
-            "lp": 0,
-            "hp": 0,
-            "de": 1,
-            "lo": -500,
-            "hi": 500,
-            "freq": 7000.00,
-            "mode": "am",
-            "zoom": 0,
-            "audio_rate": 12000,
-            "comp": 0
-        }
-        
-        # Send as string command
-        cmd = "SET auth t=kiwi p="
-        if self.password:
-            cmd += self.password
-        await self.ws.send(cmd)
-        
-        # Send receiver settings
-        await self.ws.send(f"SET AR OK in=12000 out=44100")
-        await self.ws.send(f"SET squelch=0 max=0")
-        await self.ws.send(f"SET genattn=0")
-        await self.ws.send(f"SET gen=0 mix=-1")
-        await self.ws.send(f"SET freq={handshake['freq']}")
-        await self.ws.send(f"SET mode={handshake['mode']}")
-        await self.ws.send(f"SET compression=0")
-        await self.ws.send(f"SET ident_user=HomeAssistant")
-        await self.ws.send(f"SET agc=1 hang=0")
-        await self.ws.send(f"SET SET browser=HA")
+        """Perform KiwiSDR handshake with proper initialization."""
+        try:
+            # Send authentication
+            if self.password:
+                await self.ws.send(f"SET auth t=kiwi p={self.password}")
+            else:
+                await self.ws.send("SET auth t=kiwi p=")
+            
+            await asyncio.sleep(0.1)
+            
+            # Initialize receiver with proper sequence
+            init_commands = [
+                "SET AR OK in=12000 out=44100",
+                "SET agc=1 hang=0",
+                "SET squelch=0 max=0",
+                "SET genattn=0",
+                "SET wf_comp=0",
+                "SET wf_speed=1",
+                "SET zoom=0",
+                "SET start",
+                "SET gen=0 mix=-1",
+                "SET ident_user=HomeAssistant",
+                "SET browser=HA",
+                "SET OVERRIDE inactivity_timeout=0",
+            ]
+            
+            for cmd in init_commands:
+                await self.ws.send(cmd)
+                await asyncio.sleep(0.05)
+            
+            _LOGGER.info("KiwiSDR handshake complete")
+            
+        except Exception as e:
+            _LOGGER.error(f"Handshake failed: {e}")
     
     async def authenticate_admin(self, admin_password: str):
         """Authenticate as admin."""
@@ -121,15 +118,16 @@ class KiwiSDRWebSocket:
         """Handle incoming WebSocket messages."""
         while self.running and self.ws:
             try:
-                message = await self.ws.recv()
+                message = await asyncio.wait_for(self.ws.recv(), timeout=30)
                 
                 if isinstance(message, bytes):
-                    # Binary message (audio or waterfall data)
                     await self._handle_binary_message(message)
                 else:
-                    # Text message (status or control)
                     await self._handle_text_message(message)
                     
+            except asyncio.TimeoutError:
+                _LOGGER.debug("WebSocket receive timeout, connection still alive")
+                continue
             except websockets.exceptions.ConnectionClosed:
                 _LOGGER.warning("WebSocket connection closed")
                 self.running = False
@@ -142,27 +140,20 @@ class KiwiSDRWebSocket:
         if len(data) < 1:
             return
         
-        # KiwiSDR binary message format
-        cmd = data[0:3].decode('ascii', errors='ignore')
-        
-        if cmd == 'AUD':
-            # Audio data packet
+        # Check for KiwiSDR message types
+        if data.startswith(b'AUD'):
             await self._handle_audio_data(data[3:])
-        elif cmd == 'W/F':
-            # Waterfall data packet
+        elif data.startswith(b'W/F'):
             await self._handle_waterfall_data(data[3:])
-        elif cmd == 'MSG':
-            # Message packet
+        elif data.startswith(b'MSG'):
             msg_data = data[3:].decode('utf-8', errors='ignore')
             await self._handle_text_message(msg_data)
     
     async def _handle_audio_data(self, data: bytes):
         """Handle audio data."""
         try:
-            # KiwiSDR sends 16-bit signed PCM audio
             audio_data = np.frombuffer(data, dtype=np.int16)
             
-            # Notify callbacks
             for callback in self.callbacks['audio']:
                 await callback(audio_data)
                 
@@ -172,7 +163,6 @@ class KiwiSDRWebSocket:
     async def _handle_waterfall_data(self, data: bytes):
         """Handle waterfall data."""
         try:
-            # Notify callbacks with raw data
             for callback in self.callbacks['waterfall']:
                 await callback(data)
                 
@@ -182,46 +172,42 @@ class KiwiSDRWebSocket:
     async def _handle_text_message(self, message: str):
         """Handle text WebSocket message."""
         try:
-            _LOGGER.debug(f"Received message: {message}")
+            _LOGGER.debug(f"Received message: {message[:100]}")
             
-            # Parse KiwiSDR status messages
             data = {}
             
+            # Parse different message formats
             if message.startswith("MSG"):
-                # Parse MSG format
                 parts = message.split()
                 for part in parts[1:]:
                     if '=' in part:
                         key, value = part.split('=', 1)
                         data[key] = value
                         
-            elif message.startswith("users="):
-                # User count update
+            elif "users=" in message:
                 parts = message.split()
                 for part in parts:
                     if '=' in part:
                         key, value = part.split('=', 1)
                         if key == 'users':
                             users_parts = value.split('/')
-                            data['users'] = int(users_parts[0])
-                            if len(users_parts) > 1:
+                            data['users'] = int(users_parts[0]) if users_parts[0].isdigit() else 0
+                            if len(users_parts) > 1 and users_parts[1].isdigit():
                                 data['users_max'] = int(users_parts[1])
                                 
             elif "freq=" in message:
-                # Frequency update
                 parts = message.split()
                 for part in parts:
                     if '=' in part:
                         key, value = part.split('=', 1)
                         data[key] = value
             
-            # Notify status callbacks
             if data:
                 for callback in self.callbacks['status']:
                     await callback(data)
                     
         except Exception as e:
-            _LOGGER.debug(f"Failed to parse message: {message}, error: {e}")
+            _LOGGER.debug(f"Failed to parse message: {e}")
     
     def register_callback(self, callback_type: str, callback: Callable):
         """Register a callback for message type."""
@@ -232,7 +218,10 @@ class KiwiSDRWebSocket:
         """Disconnect WebSocket."""
         self.running = False
         if self.ws:
-            await self.ws.close()
+            try:
+                await self.ws.close()
+            except:
+                pass
             self.ws = None
 
 class KiwiSDRAPI:
@@ -279,28 +268,35 @@ class KiwiSDRAPI:
     
     async def _update_status(self, data: Dict[str, Any]):
         """Update current status from WebSocket."""
-        self.current_status.update(data)
+        if 'freq' in data:
+            try:
+                self.current_status["frequency"] = float(data['freq'])
+            except:
+                pass
+        
+        if 'mode' in data:
+            self.current_status["mode"] = data['mode'].upper()
+        
+        if 'users' in data:
+            self.current_status["users"] = data['users']
+        
+        if 'users_max' in data:
+            self.current_status["users_max"] = data['users_max']
+            
         self.current_status["online"] = True
     
     async def test_connection(self) -> bool:
         """Test if we can connect to the KiwiSDR."""
         try:
-            async with aiohttp.ClientSession() as session:
-                # Try the main page first
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 url = self.base_url
-                async with session.get(url, timeout=10) as response:
+                async with session.get(url) as response:
                     if response.status == 200:
-                        # Check if it's actually a KiwiSDR
                         text = await response.text()
                         if 'kiwi' in text.lower() or 'OpenWebRX' in text:
                             _LOGGER.info("Successfully connected to KiwiSDR at %s", url)
                             return True
-                
-                # Try status endpoint
-                url = f"{self.base_url}/status"
-                async with session.get(url, timeout=10) as response:
-                    if response.status == 200:
-                        return True
                         
         except Exception as e:
             _LOGGER.error(f"Failed to connect to KiwiSDR: {e}")
@@ -310,13 +306,12 @@ class KiwiSDRAPI:
     async def get_status(self) -> Dict[str, Any]:
         """Get current KiwiSDR status."""
         try:
-            async with aiohttp.ClientSession() as session:
-                # Get main page for parsing
-                async with session.get(self.base_url, timeout=10) as response:
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(self.base_url) as response:
                     if response.status == 200:
                         html_text = await response.text()
                         
-                        # Parse HTML for status info
                         import re
                         
                         # Extract users info
@@ -331,34 +326,7 @@ class KiwiSDRAPI:
                         elif re.search(r'gps.*(?:no|unlocked|disabled)', html_text, re.IGNORECASE):
                             self.current_status["gps_status"] = "Unlocked"
                         
-                        # Extract frequency if in URL parameters
-                        freq_match = re.search(r'freq[=:]\s*(\d+\.?\d*)', html_text, re.IGNORECASE)
-                        if freq_match:
-                            self.current_status["frequency"] = float(freq_match.group(1))
-                        
-                        # Extract mode
-                        mode_match = re.search(r'mode[=:]\s*["\']?(\w+)', html_text, re.IGNORECASE)
-                        if mode_match:
-                            self.current_status["mode"] = mode_match.group(1).upper()
-                        
-                        # Check if online
                         self.current_status["online"] = True
-                        
-                # Try the status endpoint too
-                try:
-                    async with session.get(f"{self.base_url}/status", timeout=5) as response:
-                        if response.status == 200:
-                            status_text = await response.text()
-                            # Parse additional status info
-                            lines = status_text.split('\n')
-                            for line in lines:
-                                if 'users=' in line:
-                                    match = re.search(r'users=(\d+)/(\d+)', line)
-                                    if match:
-                                        self.current_status["users"] = int(match.group(1))
-                                        self.current_status["users_max"] = int(match.group(2))
-                except:
-                    pass
                         
         except Exception as e:
             _LOGGER.error(f"Error getting KiwiSDR status: {e}")
@@ -367,20 +335,55 @@ class KiwiSDRAPI:
         return self.current_status
     
     async def tune(self, frequency: float, mode: str = "AM") -> bool:
-        """Tune to a specific frequency."""
+        """Tune to a specific frequency with proper command sequence."""
         try:
-            if self.websocket and self.websocket.ws:
-                await self.websocket.send_command(f"SET freq={frequency:.3f}")
-                await self.websocket.send_command(f"SET mode={mode.lower()}")
-                self.current_status["frequency"] = frequency
-                self.current_status["mode"] = mode
-                return True
-            else:
-                _LOGGER.warning("WebSocket not connected for tuning")
+            if not self.websocket or not self.websocket.ws:
+                _LOGGER.error("WebSocket not connected for tuning")
                 return False
+            
+            # Ensure mode is lowercase for KiwiSDR
+            mode_lower = mode.lower()
+            
+            # Calculate passband based on mode
+            passband = self._get_passband_for_mode(mode_lower)
+            
+            # Send tuning commands in proper sequence
+            commands = [
+                f"SET mod={mode_lower}",
+                f"SET freq={frequency:.3f}",
+                f"SET low_cut={passband['low']}",
+                f"SET high_cut={passband['high']}",
+                "SET GET freq",
+            ]
+            
+            for cmd in commands:
+                await self.websocket.send_command(cmd)
+                await asyncio.sleep(0.1)
+            
+            # Update internal status
+            self.current_status["frequency"] = frequency
+            self.current_status["mode"] = mode.upper()
+            
+            _LOGGER.info("Tuned to %s kHz %s", frequency, mode)
+            return True
+            
         except Exception as e:
             _LOGGER.error(f"Failed to tune: {e}")
             return False
+    
+    def _get_passband_for_mode(self, mode: str) -> dict:
+        """Get appropriate passband settings for mode."""
+        passbands = {
+            "am": {"low": -4200, "high": 4200},
+            "amn": {"low": -2400, "high": 2400},
+            "lsb": {"low": -2400, "high": -300},
+            "usb": {"low": 300, "high": 2700},
+            "cw": {"low": 300, "high": 700},
+            "cwn": {"low": 470, "high": 530},
+            "fm": {"low": -8000, "high": 8000},
+            "iq": {"low": -5000, "high": 5000},
+        }
+        return passbands.get(mode, {"low": -2400, "high": 2400})
     
     async def set_agc(self, enabled: bool, hang: bool = False):
         """Set AGC settings."""
@@ -407,7 +410,6 @@ class KiwiSDRAPI:
             if speed in speed_map:
                 await self.websocket.send_command(f"SET wf_speed={speed_map[speed]}")
     
-    # Admin functions
     async def kick_user(self, user_ip: str):
         """Kick a user (admin only)."""
         if self.websocket and self.websocket.is_admin:
