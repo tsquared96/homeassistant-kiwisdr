@@ -20,6 +20,9 @@ _LOGGER = logging.getLogger(__name__)
 class CannotConnect(HomeAssistantError):
     """Error to indicate we cannot connect."""
 
+class InvalidAuth(HomeAssistantError):
+    """Error to indicate there is invalid auth."""
+
 async def validate_input(hass: HomeAssistant, data: dict) -> dict:
     """Validate the user input allows us to connect."""
     
@@ -34,15 +37,8 @@ async def validate_input(hass: HomeAssistant, data: dict) -> dict:
     if not await api.test_connection():
         raise CannotConnect
     
-    # Test WebSocket connection
-    if not await api.connect_websocket():
-        _LOGGER.warning("WebSocket connection failed, continuing with HTTP only")
-    
     # Get status
     status = await api.get_status()
-    
-    # Disconnect WebSocket for now
-    await api.disconnect()
     
     return {
         "title": data.get(CONF_NAME, f"KiwiSDR {data[CONF_HOST]}"),
