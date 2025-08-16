@@ -1,0 +1,48 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to KiwiSDR",
+        "description": "Enter your KiwiSDR connection details",
+        "data": {
+          "host": "Host (IP or hostname)",
+          "port": "Port",
+          "password": "Password (if required)",
+          "admin_password": "Admin Password (for admin features)",
+          "name": "Name for this KiwiSDR"
+        }
+      },
+      "features": {
+        "title": "Select Features",
+        "description": "Choose which features to enable for {host}",
+        "data": {
+          "enable_audio": "Enable Audio Streaming",
+          "enable_waterfall": "Enable Waterfall Display"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to KiwiSDR",
+      "invalid_auth": "Invalid authentication",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "This KiwiSDR is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "KiwiSDR Options",
+        "data": {
+          "max_users": "Maximum Users (Admin)",
+          "kick_idle_users": "Kick Idle Users (Admin)",
+          "idle_timeout": "Idle Timeout Minutes (Admin)",
+          "waterfall_speed": "Waterfall Speed",
+          "auto_squelch": "Auto Squelch",
+          "noise_reduction": "Noise Reduction"
+        }
+      }
+    }
+  }
+}
