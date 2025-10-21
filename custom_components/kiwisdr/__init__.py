@@ -260,16 +260,32 @@ async def _register_services(hass: HomeAssistant):
                         entry_data['frequency_number']._value = new_freq
                         entry_data['frequency_number'].async_write_ha_state()
 
-    # Register all services
+    # Register all services - check each individually to ensure they all get registered
     if not hass.services.has_service(DOMAIN, "tune"):
         hass.services.async_register(DOMAIN, "tune", handle_tune)
+
+    if not hass.services.has_service(DOMAIN, "set_mode"):
         hass.services.async_register(DOMAIN, "set_mode", handle_set_mode)
+
+    if not hass.services.has_service(DOMAIN, "set_bandwidth"):
         hass.services.async_register(DOMAIN, "set_bandwidth", handle_set_bandwidth)
+
+    if not hass.services.has_service(DOMAIN, "set_agc"):
         hass.services.async_register(DOMAIN, "set_agc", handle_set_agc)
+
+    if not hass.services.has_service(DOMAIN, "set_squelch"):
         hass.services.async_register(DOMAIN, "set_squelch", handle_set_squelch)
+
+    if not hass.services.has_service(DOMAIN, "waterfall_settings"):
         hass.services.async_register(DOMAIN, "waterfall_settings", handle_waterfall_settings)
+
+    if not hass.services.has_service(DOMAIN, "tune_preset"):
         hass.services.async_register(DOMAIN, "tune_preset", handle_tune_preset)
+
+    if not hass.services.has_service(DOMAIN, "step_frequency_up"):
         hass.services.async_register(DOMAIN, "step_frequency_up", handle_step_frequency_up)
+
+    if not hass.services.has_service(DOMAIN, "step_frequency_down"):
         hass.services.async_register(DOMAIN, "step_frequency_down", handle_step_frequency_down)
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
