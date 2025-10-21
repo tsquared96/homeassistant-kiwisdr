@@ -70,31 +70,34 @@ class KiwiSDRWebSocket:
                 await self.ws.send(f"SET auth t=kiwi p={self.password}")
             else:
                 await self.ws.send("SET auth t=kiwi p=")
-            
+
             await asyncio.sleep(0.1)
-            
+
             # Initialize receiver with proper sequence
             init_commands = [
                 "SET AR OK in=12000 out=44100",
                 "SET agc=1 hang=0",
                 "SET squelch=0 max=0",
                 "SET genattn=0",
-                "SET wf_comp=0",
-                "SET wf_speed=1",
-                "SET zoom=0",
-                "SET start",
                 "SET gen=0 mix=-1",
                 "SET ident_user=HomeAssistant",
                 "SET browser=HA",
                 "SET OVERRIDE inactivity_timeout=0",
+                # Waterfall initialization commands
+                "SET maxdb=-30 mindb=-110",
+                "SET wf_comp=0",
+                "SET wf_speed=1",
+                "SET zoom=0 start=0",
+                "SET wf_setup=1",
+                "SET start",
             ]
-            
+
             for cmd in init_commands:
                 await self.ws.send(cmd)
                 await asyncio.sleep(0.05)
-            
-            _LOGGER.info("KiwiSDR handshake complete")
-            
+
+            _LOGGER.info("KiwiSDR handshake complete with waterfall initialization")
+
         except Exception as e:
             _LOGGER.error(f"Handshake failed: {e}")
     

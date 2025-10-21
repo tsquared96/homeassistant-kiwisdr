@@ -177,7 +177,14 @@ class KiwiSDRMediaPlayer(MediaPlayerEntity):
                 host = self._entry.data.get(CONF_HOST)
                 port = self._entry.data.get(CONF_PORT, 8073)
                 self._kiwisdr_url = f"http://{host}:{port}/?f={frequency}&m={mode.lower()}&pb=300,2700"
-                
+
+                # Update number entity if available
+                entry_data = self.hass.data[DOMAIN].get(self._entry.entry_id, {})
+                if 'frequency_number' in entry_data:
+                    entry_data['frequency_number']._value = frequency
+                    entry_data['frequency_number']._mode = mode
+                    entry_data['frequency_number'].async_write_ha_state()
+
                 await self.async_media_play()
                 _LOGGER.info("Tuned to %s kHz %s", frequency, mode)
             else:
