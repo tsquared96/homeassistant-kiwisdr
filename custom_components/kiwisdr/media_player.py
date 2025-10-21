@@ -26,16 +26,19 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up KiwiSDR media player."""
-    
+
     if not entry.data.get(CONF_ENABLE_AUDIO, True):
         _LOGGER.debug("Audio streaming disabled for %s", entry.data.get(CONF_HOST))
         return
-    
+
     api = hass.data[DOMAIN][entry.entry_id]["api"]
-    
+
     media_player = KiwiSDRMediaPlayer(hass, entry, api)
     async_add_entities([media_player], True)
-    
+
+    # Store reference to media player so stream view can access it
+    hass.data[DOMAIN][entry.entry_id]['media_player'] = media_player
+
     _LOGGER.info("Added KiwiSDR media player for %s", entry.data.get(CONF_HOST))
 
 class KiwiSDRMediaPlayer(MediaPlayerEntity):
@@ -69,11 +72,13 @@ class KiwiSDRMediaPlayer(MediaPlayerEntity):
             configuration_url=f"http://{entry.data.get(CONF_HOST)}:{entry.data.get(CONF_PORT, 8073)}"
         )
         
-        # Build direct KiwiSDR URL with parameters
+        # Build direct KiwiSDR URL with parameters (for reference)
         host = entry.data.get(CONF_HOST)
         port = entry.data.get(CONF_PORT, 8073)
-        # Direct URL to KiwiSDR with autoplay parameters
         self._kiwisdr_url = f"http://{host}:{port}/?f={self._frequency}&m={self._mode.lower()}&pb=300,2700"
+
+        # Build local stream URL for Home Assistant to play
+        self._stream_url = f"/api/kiwisdr/{entry.entry_id}/audio.wav"
         
         # Register audio callback if WebSocket is available
         if self._api.websocket:
@@ -132,7 +137,8 @@ class KiwiSDRMediaPlayer(MediaPlayerEntity):
     @property
     def media_content_id(self) -> str:
         """Return the media content ID."""
-        return self._kiwisdr_url
+        # Return local stream URL for Home Assistant to play
+        return self._stream_url
     
     @property
     def supported_features(self) -> int:

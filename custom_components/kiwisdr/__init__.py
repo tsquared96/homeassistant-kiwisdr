@@ -13,6 +13,7 @@ from .const import (
     CONF_NAME, CONF_ENABLE_AUDIO, CONF_ENABLE_WATERFALL, MODES
 )
 from .kiwisdr_api import KiwiSDRAPI
+from .stream_view import KiwiSDRAudioStreamView
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -71,7 +72,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "api": api,
         "entry": entry,
     }
-    
+
+    # Register audio stream view (once for all instances)
+    if 'stream_view_registered' not in hass.data[DOMAIN]:
+        stream_view = KiwiSDRAudioStreamView(hass)
+        hass.http.register_view(stream_view)
+        hass.data[DOMAIN]['stream_view_registered'] = True
+        _LOGGER.info("Registered KiwiSDR audio stream view")
+
     # Setup platforms
     platforms_to_setup = [Platform.SENSOR]
     
