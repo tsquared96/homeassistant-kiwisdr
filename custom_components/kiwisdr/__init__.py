@@ -40,6 +40,7 @@ PLATFORMS: list[Platform] = [
     Platform.SENSOR,
     Platform.MEDIA_PLAYER,
     Platform.CAMERA,
+    Platform.NUMBER,
 ]
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -81,14 +82,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.info("Registered KiwiSDR audio stream view")
 
     # Setup platforms
-    platforms_to_setup = [Platform.SENSOR]
-    
+    platforms_to_setup = [Platform.SENSOR, Platform.NUMBER]
+
     if entry.data.get(CONF_ENABLE_AUDIO, True):
         platforms_to_setup.append(Platform.MEDIA_PLAYER)
-    
+
     if entry.data.get(CONF_ENABLE_WATERFALL, True):
         platforms_to_setup.append(Platform.CAMERA)
-    
+
     await hass.config_entries.async_forward_entry_setups(entry, platforms_to_setup)
     
     # Register services
@@ -198,15 +199,67 @@ async def _register_services(hass: HomeAssistant):
     async def handle_tune_preset(call: ServiceCall):
         """Handle tuning to preset stations."""
         preset_name = call.data.get("preset")
-        
+
         if preset_name in PRESET_STATIONS:
             preset = PRESET_STATIONS[preset_name]
             for data in hass.data[DOMAIN].values():
                 api = data["api"]
                 await api.tune(preset["frequency"], preset["mode"])
-                _LOGGER.info("Tuned to preset: %s (%s kHz %s)", 
+                _LOGGER.info("Tuned to preset: %s (%s kHz %s)",
                            preset_name, preset["frequency"], preset["mode"])
-    
+
+    async def handle_step_frequency_up(call: ServiceCall):
+        """Handle stepping frequency up."""
+        step = call.data.get("step", 1.0)
+
+        entity_ids = await async_extract_entity_ids(hass, call)
+        for entity_id in entity_ids:
+            api = await get_api_for_entity(entity_id)
+            if api:
+                # Get current frequency
+                current_freq = api.current_status.get("frequency", 7074.0)
+                new_freq = min(current_freq + step, 30000.0)
+
+                # Get current mode
+                current_mode = api.current_status.get("mode", "USB")
+
+                success = await api.tune(new_freq, current_mode)
+                if success:
+                    _LOGGER.info("Stepped frequency up to %s kHz", new_freq)
+
+                    # Update number entity if available
+                    entry_data = next((data for entry_id, data in hass.data[DOMAIN].items()
+                                     if entry_id in entity_id and isinstance(data, dict)), None)
+                    if entry_data and 'frequency_number' in entry_data:
+                        entry_data['frequency_number']._value = new_freq
+                        entry_data['frequency_number'].async_write_ha_state()
+
+    async def handle_step_frequency_down(call: ServiceCall):
+        """Handle stepping frequency down."""
+        step = call.data.get("step", 1.0)
+
+        entity_ids = await async_extract_entity_ids(hass, call)
+        for entity_id in entity_ids:
+            api = await get_api_for_entity(entity_id)
+            if api:
+                # Get current frequency
+                current_freq = api.current_status.get("frequency", 7074.0)
+                new_freq = max(current_freq - step, 0.0)
+
+                # Get current mode
+                current_mode = api.current_status.get("mode", "USB")
+
+                success = await api.tune(new_freq, current_mode)
+                if success:
+                    _LOGGER.info("Stepped frequency down to %s kHz", new_freq)
+
+                    # Update number entity if available
+                    entry_data = next((data for entry_id, data in hass.data[DOMAIN].items()
+                                     if entry_id in entity_id and isinstance(data, dict)), None)
+                    if entry_data and 'frequency_number' in entry_data:
+                        entry_data['frequency_number']._value = new_freq
+                        entry_data['frequency_number'].async_write_ha_state()
+
     # Register all services
     if not hass.services.has_service(DOMAIN, "tune"):
         hass.services.async_register(DOMAIN, "tune", handle_tune)
@@ -216,6 +269,8 @@ async def _register_services(hass: HomeAssistant):
         hass.services.async_register(DOMAIN, "set_squelch", handle_set_squelch)
         hass.services.async_register(DOMAIN, "waterfall_settings", handle_waterfall_settings)
         hass.services.async_register(DOMAIN, "tune_preset", handle_tune_preset)
+        hass.services.async_register(DOMAIN, "step_frequency_up", handle_step_frequency_up)
+        hass.services.async_register(DOMAIN, "step_frequency_down", handle_step_frequency_down)
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
@@ -226,14 +281,14 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await api.disconnect()
     
     # Unload platforms
-    platforms_to_unload = [Platform.SENSOR]
-    
+    platforms_to_unload = [Platform.SENSOR, Platform.NUMBER]
+
     if entry.data.get(CONF_ENABLE_AUDIO, True):
         platforms_to_unload.append(Platform.MEDIA_PLAYER)
-    
+
     if entry.data.get(CONF_ENABLE_WATERFALL, True):
         platforms_to_unload.append(Platform.CAMERA)
-    
+
     unload_ok = await hass.config_entries.async_unload_platforms(entry, platforms_to_unload)
     
     if unload_ok:

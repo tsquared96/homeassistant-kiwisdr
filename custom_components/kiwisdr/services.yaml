@@ -194,3 +194,43 @@ tune_preset:
             - "CB Channel 19"
             - "Air Band"
             - "Marine VHF"
+
+step_frequency_up:
+  name: Step Frequency Up
+  description: Increase frequency by a specified step
+  target:
+    entity:
+      integration: kiwisdr
+      domain: media_player
+  fields:
+    step:
+      name: Step Size
+      description: Amount to increase frequency in kHz
+      required: false
+      default: 1.0
+      selector:
+        number:
+          min: 0.001
+          max: 1000
+          step: 0.001
+          unit_of_measurement: kHz
+
+step_frequency_down:
+  name: Step Frequency Down
+  description: Decrease frequency by a specified step
+  target:
+    entity:
+      integration: kiwisdr
+      domain: media_player
+  fields:
+    step:
+      name: Step Size
+      description: Amount to decrease frequency in kHz
+      required: false
+      default: 1.0
+      selector:
+        number:
+          min: 0.001
+          max: 1000
+          step: 0.001
+          unit_of_measurement: kHz
